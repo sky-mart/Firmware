@@ -24,7 +24,7 @@ set(config_module_list
 	drivers/hmc5883
 	drivers/ms5611
 	#drivers/mb12xx
-	drivers/srf02
+	#drivers/srf02
 	drivers/sf0x
 	drivers/ll40ls
 	drivers/trone
@@ -45,7 +45,7 @@ set(config_module_list
 	drivers/gimbal
 	drivers/pwm_input
 	drivers/camera_trigger
-	drivers/bst
+	#drivers/bst
 	drivers/snapdragon_rc_pwm
 	drivers/lis3mdl
 
@@ -73,7 +73,7 @@ set(config_module_list
 	modules/commander
 	modules/navigator
 	modules/mavlink
-	modules/gpio_led
+	#modules/gpio_led
 	modules/uavcan
 	modules/land_detector
 
