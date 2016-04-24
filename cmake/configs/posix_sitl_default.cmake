@@ -27,6 +27,7 @@ set(config_module_list
 	systemcmds/topic_listener
 	systemcmds/perf
 	modules/uORB
+	modules/uORB/uORB_tests
 	modules/param
 	modules/systemlib
 	modules/systemlib/mixer

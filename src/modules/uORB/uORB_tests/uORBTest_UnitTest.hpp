@@ -33,8 +33,8 @@
 
 #ifndef _uORBTest_UnitTest_hpp_
 #define _uORBTest_UnitTest_hpp_
-#include "uORBCommon.hpp"
-#include "uORB.h"
+#include "../uORBCommon.hpp"
+#include "../uORB.h"
 #include <px4_time.h>
 
 struct orb_test {
@@ -51,7 +51,8 @@ struct orb_test_medium {
 	char junk[64];
 };
 ORB_DEFINE(orb_test_medium, struct orb_test_medium,  "ORB_TEST_MEDIUM:int val;hrt_abstime time;char[64] junk;");
-ORB_DEFINE(orb_test_medium_multi, struct orb_test_medium,  "ORB_TEST_MEDIUM_MULTI:int val;hrt_abstime time;char[64] junk;");
+ORB_DEFINE(orb_test_medium_multi, struct orb_test_medium,
+	   "ORB_TEST_MEDIUM_MULTI:int val;hrt_abstime time;char[64] junk;");
 
 
 struct orb_test_large {
