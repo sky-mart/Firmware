@@ -10,9 +10,8 @@
 #define DBGPRINT
 
 #if defined(DBGPRINT)
-
 // needed for mallinfo
-#if defined(__PX4_POSIX)
+#if defined(__PX4_POSIX) && !defined(__PX4_DARWIN)
 #include <malloc.h>
 #endif /* __PX4_POSIX */
 
@@ -20,7 +19,6 @@
 #if defined(__PX4_DARWIN)
 #undef DBGPRINT
 #endif /* defined(__PX4_DARWIN) */
-
 #endif /* defined(DBGPRINT) */
 
 using namespace px4::logger;
@@ -85,12 +83,12 @@ void Logger::usage(const char *reason)
 	}
 
 	PX4_INFO("usage: logger {start|stop|status|on|off} [-r <log rate>] [-b <buffer size>] -e -a -t -x\n"
-	      "\t-r\tLog rate in Hz, 0 means unlimited rate\n"
-	      "\t-b\tLog buffer size in KiB, default is 8\n"
-	      "\t-e\tEnable logging by default (if not, can be started by command)\n"
-	      "\t-a\tLog only when armed (can be still overriden by command)\n"
-	      "\t-t\tUse date/time for naming log directories and files\n"
-	      "\t-x\tExtended logging");
+		 "\t-r\tLog rate in Hz, 0 means unlimited rate\n"
+		 "\t-b\tLog buffer size in KiB, default is 8\n"
+		 "\t-e\tEnable logging by default (if not, can be started by command)\n"
+		 "\t-a\tLog only when armed (can be still overriden by command)\n"
+		 "\t-t\tUse date/time for naming log directories and files\n"
+		 "\t-x\tExtended logging");
 }
 
 int Logger::start(char *const *argv)
@@ -271,7 +269,7 @@ int Logger::add_topic(const orb_metadata *topic)
 
 		if (fields_len > sizeof(message_format_s::format)) {
 			PX4_WARN("skip topic %s, format string is too large: %zu (max is %zu)", topic->o_name, fields_len,
-			     sizeof(message_format_s::format));
+				 sizeof(message_format_s::format));
 
 		} else {
 
@@ -302,7 +300,8 @@ int Logger::add_topic(const char *name, unsigned interval = 0)
 	return fd;
 }
 
-bool Logger::copy_if_updated_multi(orb_id_t topic, int multi_instance, int *handle, void *buffer, uint64_t *time_last_checked)
+bool Logger::copy_if_updated_multi(orb_id_t topic, int multi_instance, int *handle, void *buffer,
+				   uint64_t *time_last_checked)
 {
 	bool updated = false;
 
@@ -440,7 +439,8 @@ void Logger::run()
 //				orb_check(sub.fd, &updated);	// check whether a non-multi topic has been updated
 				/* this works for both single and multi-instances */
 				for (unsigned instance = 0; instance < ORB_MULTI_MAX_INSTANCES; instance++) {
-					if (copy_if_updated_multi(sub.metadata, instance, &sub.fd[instance], buffer + sizeof(message_data_header_s), &sub.time_tried_subscribe)) {
+					if (copy_if_updated_multi(sub.metadata, instance, &sub.fd[instance], buffer + sizeof(message_data_header_s),
+								  &sub.time_tried_subscribe)) {
 
 //						uint64_t timestamp;
 //						memcpy(&timestamp, buffer + sizeof(message_data_header_s), sizeof(timestamp));
@@ -524,7 +524,7 @@ void Logger::run()
 				alloc_info = mallinfo();
 				double throughput = total_bytes / deltat;
 				PX4_INFO("%8.1e Kbytes/sec, %d highWater,  %d dropouts, %5.3f sec max, free heap: %d",
-				      throughput / 1e3, highWater, dropout_count, max_drop_len, alloc_info.fordblks);
+					 throughput / 1e3, highWater, dropout_count, max_drop_len, alloc_info.fordblks);
 
 				total_bytes = 0;
 				highWater = 0,
@@ -660,6 +660,7 @@ void Logger::write_formats()
 		msg.format_len = snprintf(msg.format, sizeof(msg.format), "%s", sub.metadata->o_fields);
 		size_t msg_size = sizeof(msg) - sizeof(msg.format) + msg.format_len;
 		msg.msg_size = msg_size - 2;
+
 		while (!_writer.write(&msg, msg_size)) {
 			_writer.unlock();
 			_writer.notify();
