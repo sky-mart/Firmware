@@ -55,28 +55,32 @@
 			"working_dir": "${project_path}",
 			"file_regex": "^(..[^:]*):([0-9]+):?([0-9]+)?:? (.*)$",
 			"cmd": ["make"],
-			"shell": true
+			"shell": true,
+			"path": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 		},
 		{
 			"name": "PX4: make and upload",
 			"working_dir": "${project_path}",
 			"file_regex": "^(..[^:]*):([0-9]+):?([0-9]+)?:? (.*)$",
 			"cmd": ["make upload px4fmu-v2_default -j8"],
-			"shell": true
+			"shell": true,
+			"path": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 		},
 		{
 			"name": "PX4: make posix",
 			"working_dir": "${project_path}",
 			"file_regex": "^(..[^:]*):([0-9]+):?([0-9]+)?:? (.*)$",
 			"cmd": ["make posix"],
-			"shell": true
+			"shell": true,
+			"path": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 		},
 		{
 			"name": "MindPX_V2: make and upload",
 			"working_dir": "${project_path}",
 			"file_regex": "^(..[^:]*):([0-9]+):?([0-9]+)?:? (.*)$",
 			"cmd": ["make upload mindpx-v2_default -j8"],
-			"shell": true
+			"shell": true,
+			"path": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 		}
 	]
 }

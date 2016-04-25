@@ -96,6 +96,8 @@ set(config_module_list
 	modules/mc_pos_control
 	modules/vtol_att_control
 
+	modules/stable_duckling
+
 	#
 	# Logging
 	#
