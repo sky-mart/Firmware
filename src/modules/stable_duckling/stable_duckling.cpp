@@ -7,6 +7,7 @@
 #include <uORB/topics/actuator_controls.h>
 #include <uORB/topics/actuator_controls_0.h>
 #include <uORB/topics/vehicle_attitude.h>
+#include <uORB/topics/vehicle_command.h>
 #include <uORB/uORB.h>
 
 #include <stdio.h>
@@ -53,6 +54,7 @@ private:
 
 	int	_v_att_sub;			/**< vehicle attitude subscription */
 	int 	_armed_sub;			/**< arming status subscription */
+	int 	_v_cmd_sub;			/**< vehicle command subscription */
 
 	orb_advert_t	_actuators_0_pub;	/**< attitude actuator controls publication */
 	orb_advert_t	_armed_pub;		/**< arming status publication */
@@ -60,6 +62,7 @@ private:
 	struct vehicle_attitude_s	_v_att;			/**< vehicle attitude */
 	struct actuator_controls_s	_actuators;		/**< actuator controls */
 	struct actuator_armed_s		_armed;			/**< actuator arming status */
+	struct vehicle_command_s	_v_cmd;			/**< vehicle command */
 
 	float _kp;
 	float _ki;
@@ -86,6 +89,7 @@ StableDuckling::StableDuckling() :
 	_control_task(-1),
 	_v_att_sub(-1),
 	_armed_sub(-1),
+	_v_cmd_sub(-1),
 	_actuators_0_pub(nullptr),
 	_armed_pub(nullptr)	
 {
@@ -125,6 +129,9 @@ StableDuckling::task_main_trampoline(int argc, char *argv[])
 void
 StableDuckling::task_main()
 {
+	_v_cmd_sub = orb_subscribe(ORB_ID(vehicle_command));
+	orb_set_interval(_v_cmd_sub, 10);
+
 	/* subscribe to sensor_combined topic */
 	_v_att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
 	orb_set_interval(_v_att_sub, 10);
@@ -149,13 +156,16 @@ StableDuckling::task_main()
 	}
 
 	/* one could wait for multiple topics with this technique, just using one here */
-	px4_pollfd_struct_t fds[1];
+	px4_pollfd_struct_t fds[2];
 	fds[0].fd = _v_att_sub;
 	fds[0].events = POLLIN;
 
+	fds[1].fd = _v_cmd_sub;
+	fds[1].events = POLLIN;
+
 	while (!_task_should_exit) {
 		/* wait for sensor update of 1 file descriptor for 10 ms  */
-		int poll_ret = poll(fds, 1, 10);
+		int poll_ret = poll(fds, 2, 10);
 
 		/* timed out - periodic check for _task_should_exit */
 	        if (poll_ret == 0) {
@@ -172,10 +182,10 @@ StableDuckling::task_main()
 
 		if (fds[0].revents & POLLIN) {
 			orb_copy(ORB_ID(vehicle_attitude), _v_att_sub, &_v_att);
-			warnx("Euler angles:\t%8.4f\t%8.4f\t%8.4f",
-			       (double)_v_att.roll,
-			       (double)_v_att.pitch,
-			       (double)_v_att.yaw);
+			// warnx("Euler angles:\t%8.4f\t%8.4f\t%8.4f",
+			//        (double)_v_att.roll,
+			//        (double)_v_att.pitch,
+			//        (double)_v_att.yaw);
 
 			// analyse attitude data
 			// ...
@@ -186,6 +196,33 @@ StableDuckling::task_main()
 			orb_publish(ORB_ID(actuator_controls_0), _actuators_0_pub, &_actuators);
 		}
 
+		if (fds[1].revents & POLLIN) {
+			orb_copy(ORB_ID(vehicle_command), _v_cmd_sub, &_v_cmd);
+			warnx("command long received\n 		\
+				target_system: %d\n 		\
+				target_component: %d\n 		\
+				command: %d\n 			\
+				confirmation: %d\n 		\
+				param1: %f\n 			\
+				param2: %f\n 			\
+				param3: %f\n 			\
+				param4: %f\n 			\
+				param5: %f\n 			\
+				param6: %f\n 			\
+				param7: %f\n", 
+				_v_cmd.target_system,
+				_v_cmd.target_component,
+				_v_cmd.command,
+				_v_cmd.confirmation,
+				(double)_v_cmd.param1,
+				(double)_v_cmd.param2,
+				(double)_v_cmd.param3,
+				(double)_v_cmd.param4,
+				(double)_v_cmd.param5,
+				(double)_v_cmd.param6,
+				(double)_v_cmd.param7
+				);
+		}
 
 	}
 
