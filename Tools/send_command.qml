@@ -54,11 +54,12 @@ FactPanel {
         // QGroundControl will warn and shutdown.
 
         QGCLabel {
-            id: test
+            id: cmd_label
             text: "Command ID"
         }
 
         QGCLabel {
+            id: param4_label
             text: "Param 4"
         }
 
@@ -67,55 +68,82 @@ FactPanel {
         }
 
         QGCTextField {
-            onEditingFinished: panel.param4 = text
+            onEditingFinished: {
+                panel.param4 = text
+                param4_label.text = panel.param4
+            }
         }
 
         QGCLabel {
+            id: param1_label
             text: "Param 1"
         }
 
         QGCLabel {
+            id: param5_label
             text: "Param 5"
         }
 
         QGCTextField {
-            onEditingFinished: panel.param1 = text
+            onEditingFinished: {
+                panel.param1 = text
+                param1_label.text = panel.param1
+            }
         }
 
         QGCTextField {
-            onEditingFinished: panel.param5 = text
+            onEditingFinished: {
+                panel.param5 = text
+                param5_label.text = panel.param5
+            }
         }
 
         QGCLabel {
+            id: param2_label
             text: "Param 2"
         }
 
         QGCLabel {
+            id: param6_label
             text: "Param 6"
         }
 
         QGCTextField {
-            onEditingFinished: panel.param2 = text
+            onEditingFinished: {
+                panel.param2 = text
+                param2_label.text = panel.param2
+            }
         }
 
         QGCTextField {
-            onEditingFinished: panel.param6 = text
+            onEditingFinished: {
+                panel.param6 = text
+                param6_label.text = panel.param6
+            }
         }
 
         QGCLabel {
+            id: param3_label
             text: "Param 3"
         }
 
         QGCLabel {
+            id: param7_label
             text: "Param 7"
         }
 
         QGCTextField {
-            onEditingFinished: panel.param3 = text
+            onEditingFinished: {
+                panel.param3 = text
+                param3_label.text = panel.param3
+            }
         }
 
         QGCTextField {
-            onEditingFinished: panel.param7 = text
+            onEditingFinished: {
+                panel.param7 = text
+                param7_label.text = panel.param7
+            }
         }
 
         // FactTextField {

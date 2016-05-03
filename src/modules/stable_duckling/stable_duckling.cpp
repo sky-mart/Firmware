@@ -29,6 +29,21 @@
  */
 extern "C" __EXPORT int stable_duckling_main(int argc, char *argv[]);
 
+enum StableDucklingMode
+{
+	SILENCE = 0,
+	MANUAL,
+	PID,
+	IMPULSE,
+};
+
+enum StableDucklingCommand
+{
+	SET_MODE = 10001,
+	SET_PWM,
+	SET_PID_COEFFS
+};
+
 class StableDuckling 
 {
 public:
@@ -68,6 +83,29 @@ private:
 	float _ki;
 	float _kd;
 
+	float _roll_integral;
+	float _thrust;
+
+	/**
+	 * Assume that _thrust depends on control signal like
+	 * _thrust = _k_thrust * control_signal + _b_thrust 
+	 */
+	float _k_thrust;
+	float _b_thrust;
+
+	static const float MIN_CONTROL;
+	static const float MAX_CONTROL;
+
+	StableDucklingMode _mode;
+
+	static const int CONTROL_INTERVAL;
+
+	static const int IMPULSE_LENGTH;
+
+	int _impulse_index;
+
+	void apply_thrust();
+
 	/**
 	 * Shim for calling task_main from task_create.
 	 */
@@ -77,6 +115,10 @@ private:
 	 * Main attitude control task.
 	 */
 	void		task_main();
+
+	void 		control();
+
+	void 		analyse_command();
 };
 
 namespace stable_duckling 
@@ -91,7 +133,10 @@ StableDuckling::StableDuckling() :
 	_armed_sub(-1),
 	_v_cmd_sub(-1),
 	_actuators_0_pub(nullptr),
-	_armed_pub(nullptr)	
+	_armed_pub(nullptr),
+	_roll_integral(0),
+	_mode(SILENCE),
+	_impulse_index(0)	
 {
 }
 
@@ -119,6 +164,74 @@ StableDuckling::~StableDuckling()
 	stable_duckling::g_duckling = nullptr;
 }
 
+void StableDuckling::control() 
+{
+	switch (_mode) {
+	case PID:
+		_roll_integral += _v_att.roll;
+
+		_thrust = 	_kp * _v_att.roll +
+				_ki * _roll_integral +
+				_kd * _v_att.rollspeed;
+
+		apply_thrust();
+		break;
+	case IMPULSE:
+		if (_impulse_index == IMPULSE_LENGTH) {
+			_actuators.control[0] = MIN_CONTROL;
+			_actuators.control[1] = MIN_CONTROL;
+			_impulse_index = 0;
+			_mode = SILENCE;
+		} else {
+			_actuators.control[0] = MAX_CONTROL;
+			_actuators.control[1] = MIN_CONTROL;
+			_impulse_index++;
+		}
+		break;
+	default:
+		_actuators.control[0] = MIN_CONTROL;
+		_actuators.control[1] = MIN_CONTROL;
+	}				
+
+	_actuators.timestamp = hrt_absolute_time();
+	orb_publish(ORB_ID(actuator_controls_0), _actuators_0_pub, &_actuators);
+}
+
+void StableDuckling::apply_thrust() 
+{
+	if (_thrust > 0) {
+		_actuators.control[0] = (_thrust - _b_thrust) / _k_thrust;
+		if (_actuators.control[0] > MAX_CONTROL) 
+			_actuators.control[0] = MAX_CONTROL;
+		_actuators.control[1] = MIN_CONTROL;
+	} else {
+		_actuators.control[1] = (_thrust - _b_thrust) / _k_thrust;
+		if (_actuators.control[1] > MAX_CONTROL) 
+			_actuators.control[1] = MAX_CONTROL;
+		_actuators.control[0] = MIN_CONTROL;
+	}
+}
+
+void StableDuckling::analyse_command() 
+{
+	switch ((StableDucklingCommand)_v_cmd.command) {
+	case SET_MODE:
+		_mode = (StableDucklingMode)_v_cmd.param1;
+		break;
+	case SET_PWM:
+		_actuators.control[0] = _v_cmd.param1;
+		_actuators.control[1] = _v_cmd.param2;
+		break;
+	case SET_PID_COEFFS:
+		_kp = _v_cmd.param1;
+		_ki = _v_cmd.param2;
+		_kd = _v_cmd.param3;
+		break;
+	default:
+		break;
+	}
+}
+
 void
 StableDuckling::task_main_trampoline(int argc, char *argv[])
 {
@@ -130,11 +243,11 @@ void
 StableDuckling::task_main()
 {
 	_v_cmd_sub = orb_subscribe(ORB_ID(vehicle_command));
-	orb_set_interval(_v_cmd_sub, 10);
+	orb_set_interval(_v_cmd_sub, CONTROL_INTERVAL);
 
 	/* subscribe to sensor_combined topic */
 	_v_att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
-	orb_set_interval(_v_att_sub, 10);
+	orb_set_interval(_v_att_sub, CONTROL_INTERVAL);
 
 	_actuators_0_pub = orb_advertise(ORB_ID(actuator_controls_0), &_actuators);
 
@@ -165,7 +278,7 @@ StableDuckling::task_main()
 
 	while (!_task_should_exit) {
 		/* wait for sensor update of 1 file descriptor for 10 ms  */
-		int poll_ret = poll(fds, 2, 10);
+		int poll_ret = poll(fds, 2, CONTROL_INTERVAL);
 
 		/* timed out - periodic check for _task_should_exit */
 	        if (poll_ret == 0) {
@@ -182,46 +295,14 @@ StableDuckling::task_main()
 
 		if (fds[0].revents & POLLIN) {
 			orb_copy(ORB_ID(vehicle_attitude), _v_att_sub, &_v_att);
-			// warnx("Euler angles:\t%8.4f\t%8.4f\t%8.4f",
-			//        (double)_v_att.roll,
-			//        (double)_v_att.pitch,
-			//        (double)_v_att.yaw);
 
-			// analyse attitude data
-			// ...
-			
-			_actuators.control[0] = -1.0f;
-			_actuators.control[1] = -1.0f;
-			_actuators.timestamp = hrt_absolute_time();
-			orb_publish(ORB_ID(actuator_controls_0), _actuators_0_pub, &_actuators);
+			control();
 		}
 
 		if (fds[1].revents & POLLIN) {
 			orb_copy(ORB_ID(vehicle_command), _v_cmd_sub, &_v_cmd);
-			warnx("command long received\n 		\
-				target_system: %d\n 		\
-				target_component: %d\n 		\
-				command: %d\n 			\
-				confirmation: %d\n 		\
-				param1: %f\n 			\
-				param2: %f\n 			\
-				param3: %f\n 			\
-				param4: %f\n 			\
-				param5: %f\n 			\
-				param6: %f\n 			\
-				param7: %f\n", 
-				_v_cmd.target_system,
-				_v_cmd.target_component,
-				_v_cmd.command,
-				_v_cmd.confirmation,
-				(double)_v_cmd.param1,
-				(double)_v_cmd.param2,
-				(double)_v_cmd.param3,
-				(double)_v_cmd.param4,
-				(double)_v_cmd.param5,
-				(double)_v_cmd.param6,
-				(double)_v_cmd.param7
-				);
+
+			analyse_command();
 		}
 
 	}
@@ -250,6 +331,11 @@ StableDuckling::start()
 
 	return OK;
 }
+
+const float StableDuckling::MIN_CONTROL = -1.0f;
+const float StableDuckling::MAX_CONTROL = 1.0f;
+const int StableDuckling::CONTROL_INTERVAL = 10; 	// ms
+const int StableDuckling::IMPULSE_LENGTH = 5;		// control intervals
 
 int stable_duckling_main(int argc, char *argv[])
 {

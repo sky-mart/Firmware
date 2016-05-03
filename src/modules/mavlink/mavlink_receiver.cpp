@@ -296,12 +296,6 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 bool
 MavlinkReceiver::evaluate_target_ok(int command, int target_system, int target_component)
 {
-	warnx("command: %d\n \
-		target_system: %d\n \
-		target_component: %d\n", 
-		command,
-		target_system,
-		target_component);
 	/* evaluate if this system should accept this command */
 	bool target_ok = false;
 
@@ -325,14 +319,12 @@ void
 MavlinkReceiver::handle_message_command_long(mavlink_message_t *msg)
 {
 	/* command */
-	warnx("command long received");
 	mavlink_command_long_t cmd_mavlink;
 	mavlink_msg_command_long_decode(msg, &cmd_mavlink);
 
 	bool target_ok = evaluate_target_ok(cmd_mavlink.command, cmd_mavlink.target_system, cmd_mavlink.target_component);
 
 	if (target_ok) {
-		warnx("target_ok");
 		//check for MAVLINK terminate command
 		if (cmd_mavlink.command == MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN && ((int)cmd_mavlink.param1) == 3) {
 			/* This is the link shutdown command, terminate mavlink */
@@ -396,7 +388,6 @@ MavlinkReceiver::handle_message_command_long(mavlink_message_t *msg)
 			} else {
 				orb_publish(ORB_ID(vehicle_command), _cmd_pub, &vcmd);
 			}
-			warnx("uorb published");
 		}
 	}
 }
