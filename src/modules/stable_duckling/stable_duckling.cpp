@@ -231,12 +231,14 @@ void StableDuckling::analyse_command()
 	case SET_MODE:
 		_mode = (StableDucklingMode)_v_cmd.param1;
 		stop_motors();
-		warnx("new mode %d set", _mode);
+		warnx("mode %d set", _mode);
 		break;
 	case SET_PWM:
 		_actuators.control[0] = _v_cmd.param1;
 		_actuators.control[1] = _v_cmd.param2;
-		warnx("pwm set manully");
+		warnx("pwm (%.2f %.2f) set", 
+			(double)_actuators.control[0], 
+			(double)_actuators.control[1]);
 		break;
 	case SET_PID_COEFFS:
 		_kp = _v_cmd.param1;
