@@ -8,6 +8,7 @@
 #include <uORB/topics/actuator_controls_0.h>
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_command.h>
+#include <uORB/topics/safety.h>
 #include <uORB/uORB.h>
 
 #include <stdio.h>
@@ -70,14 +71,18 @@ private:
 	int	_v_att_sub;			/**< vehicle attitude subscription */
 	int 	_armed_sub;			/**< arming status subscription */
 	int 	_v_cmd_sub;			/**< vehicle command subscription */
+	int 	_safety_sub;			/**< safety subscription */
 
 	orb_advert_t	_actuators_0_pub;	/**< attitude actuator controls publication */
 	orb_advert_t	_armed_pub;		/**< arming status publication */
+	orb_advert_t	_safety_pub;		/**< safety check publication */
 
 	struct vehicle_attitude_s	_v_att;			/**< vehicle attitude */
 	struct actuator_controls_s	_actuators;		/**< actuator controls */
 	struct actuator_armed_s		_armed;			/**< actuator arming status */
 	struct vehicle_command_s	_v_cmd;			/**< vehicle command */
+	struct vehicle_attitude_s 	_v_att_init;		/**< initial vehicle attitude */
+	struct safety_s			_safety;
 
 	float _kp;
 	float _ki;
@@ -93,18 +98,21 @@ private:
 	float _k_thrust;
 	float _b_thrust;
 
-	static const float MIN_CONTROL;
-	static const float MAX_CONTROL;
-
 	StableDucklingMode _mode;
-
-	static const int CONTROL_INTERVAL;
-
-	static const int IMPULSE_LENGTH;
 
 	int _impulse_index;
 
+	static const float MIN_CONTROL;
+	static const float MAX_CONTROL;
+	static const int CONTROL_INTERVAL;
+	static const int IMPULSE_LENGTH;
+
 	void apply_thrust();
+	void stop_motors();
+	void control();
+	void analyse_command();
+	void safety_off();
+	void arm_actuators();
 
 	/**
 	 * Shim for calling task_main from task_create.
@@ -114,11 +122,7 @@ private:
 	/**
 	 * Main attitude control task.
 	 */
-	void		task_main();
-
-	void 		control();
-
-	void 		analyse_command();
+	void		task_main();	
 };
 
 namespace stable_duckling 
@@ -132,8 +136,10 @@ StableDuckling::StableDuckling() :
 	_v_att_sub(-1),
 	_armed_sub(-1),
 	_v_cmd_sub(-1),
+	_safety_sub(-1),
 	_actuators_0_pub(nullptr),
 	_armed_pub(nullptr),
+	_safety_pub(nullptr),
 	_roll_integral(0),
 	_mode(SILENCE),
 	_impulse_index(0)	
@@ -164,6 +170,12 @@ StableDuckling::~StableDuckling()
 	stable_duckling::g_duckling = nullptr;
 }
 
+void StableDuckling::stop_motors()
+{
+	_actuators.control[0] = MIN_CONTROL;
+	_actuators.control[1] = MIN_CONTROL;
+}
+
 void StableDuckling::control() 
 {
 	switch (_mode) {
@@ -188,9 +200,10 @@ void StableDuckling::control()
 			_impulse_index++;
 		}
 		break;
+	case MANUAL:
+		break;
 	default:
-		_actuators.control[0] = MIN_CONTROL;
-		_actuators.control[1] = MIN_CONTROL;
+		stop_motors();
 	}				
 
 	_actuators.timestamp = hrt_absolute_time();
@@ -217,18 +230,62 @@ void StableDuckling::analyse_command()
 	switch ((StableDucklingCommand)_v_cmd.command) {
 	case SET_MODE:
 		_mode = (StableDucklingMode)_v_cmd.param1;
+		stop_motors();
+		warnx("new mode %d set", _mode);
 		break;
 	case SET_PWM:
 		_actuators.control[0] = _v_cmd.param1;
 		_actuators.control[1] = _v_cmd.param2;
+		warnx("pwm set manully");
 		break;
 	case SET_PID_COEFFS:
 		_kp = _v_cmd.param1;
 		_ki = _v_cmd.param2;
 		_kd = _v_cmd.param3;
+		warnx("pid coeffs (%.2f %.2f %.2f) set",
+			(double)_kp,
+			(double)_ki,
+			(double)_kd);
 		break;
 	default:
 		break;
+	}
+}
+
+void StableDuckling::safety_off()
+{
+	_safety.timestamp = hrt_absolute_time();
+	_safety.safety_switch_available = false;
+	_safety.safety_off = true;
+	_safety_pub = orb_advertise(ORB_ID(safety), &_safety);
+	orb_publish(ORB_ID(safety), _safety_pub, &_safety);
+
+	_safety_sub = orb_subscribe(ORB_ID(safety));
+	orb_copy(ORB_ID(safety), _safety_sub, &_safety);
+
+	if (_safety.safety_off) {
+		warnx("Safety's turned off");
+	} else {
+		errx(1, "Turning safety off failed");
+	}
+}
+
+void StableDuckling::arm_actuators()
+{
+	_armed.timestamp = hrt_absolute_time();
+	_armed.ready_to_arm = true;
+	_armed.armed = true;
+	_armed_pub = orb_advertise(ORB_ID(actuator_armed), &_armed);
+	orb_publish(ORB_ID(actuator_armed), _armed_pub, &_armed);
+
+	/* read back values to validate */
+	_armed_sub = orb_subscribe(ORB_ID(actuator_armed));
+	orb_copy(ORB_ID(actuator_armed), _armed_sub, &_armed);
+
+	if (_armed.ready_to_arm && _armed.armed) {
+		warnx("Actuator armed");
+	} else {
+		errx(1, "Arming actuators failed");
 	}
 }
 
@@ -249,24 +306,9 @@ StableDuckling::task_main()
 	_v_att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
 	orb_set_interval(_v_att_sub, CONTROL_INTERVAL);
 
+	safety_off();
+	arm_actuators();	
 	_actuators_0_pub = orb_advertise(ORB_ID(actuator_controls_0), &_actuators);
-
-	_armed.timestamp = hrt_absolute_time();
-	_armed.ready_to_arm = true;
-	_armed.armed = true;
-	_armed_pub = orb_advertise(ORB_ID(actuator_armed), &_armed);
-	orb_publish(ORB_ID(actuator_armed), _armed_pub, &_armed);
-
-	/* read back values to validate */
-	_armed_sub = orb_subscribe(ORB_ID(actuator_armed));
-	orb_copy(ORB_ID(actuator_armed), _armed_sub, &_armed);
-
-	if (_armed.ready_to_arm && _armed.armed) {
-		warnx("Actuator armed");
-
-	} else {
-		errx(1, "Arming actuators failed");
-	}
 
 	/* one could wait for multiple topics with this technique, just using one here */
 	px4_pollfd_struct_t fds[2];
