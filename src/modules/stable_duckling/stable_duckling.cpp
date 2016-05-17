@@ -141,6 +141,8 @@ StableDuckling::StableDuckling() :
 	_armed_pub(nullptr),
 	_safety_pub(nullptr),
 	_roll_integral(0),
+	_k_thrust(0.4638f), // experimental values
+	_b_thrust(0.421),
 	_mode(SILENCE),
 	_impulse_index(0)	
 {
@@ -308,8 +310,8 @@ StableDuckling::task_main()
 	_v_att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
 	orb_set_interval(_v_att_sub, CONTROL_INTERVAL);
 
-	safety_off();
-	arm_actuators();	
+	// safety_off();
+	// arm_actuators();	
 	_actuators_0_pub = orb_advertise(ORB_ID(actuator_controls_0), &_actuators);
 
 	/* one could wait for multiple topics with this technique, just using one here */
