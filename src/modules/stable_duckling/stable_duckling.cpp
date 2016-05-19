@@ -42,7 +42,8 @@ enum StableDucklingCommand
 {
 	SET_MODE = 10001,
 	SET_PWM,
-	SET_PID_COEFFS
+	SET_PID_COEFFS,
+	SET_IMP_PARAMS
 };
 
 class StableDuckling 
@@ -100,12 +101,17 @@ private:
 
 	StableDucklingMode _mode;
 
+	/**
+	 * Impulse mode allows to explore system response
+	 * on impulses of different length and amplitude
+	 */
 	int _impulse_index;
+	int _impulse_length; // in CONTROL_INTERVALS
+	float _impulse_ampl; // control signal value
 
 	static const float MIN_CONTROL;
 	static const float MAX_CONTROL;
 	static const int CONTROL_INTERVAL;
-	static const int IMPULSE_LENGTH;
 
 	void apply_thrust();
 	void stop_motors();
@@ -144,7 +150,9 @@ StableDuckling::StableDuckling() :
 	_k_thrust(0.4638f), // experimental values
 	_b_thrust(0.421),
 	_mode(SILENCE),
-	_impulse_index(0)	
+	_impulse_index(0),
+	_impulse_length(20),
+	_impulse_ampl(1.0)	
 {
 }
 
@@ -191,13 +199,13 @@ void StableDuckling::control()
 		apply_thrust();
 		break;
 	case IMPULSE:
-		if (_impulse_index == IMPULSE_LENGTH) {
+		if (_impulse_index == _impulse_length) {
 			_actuators.control[0] = MIN_CONTROL;
 			_actuators.control[1] = MIN_CONTROL;
 			_impulse_index = 0;
 			_mode = SILENCE;
 		} else {
-			_actuators.control[0] = MAX_CONTROL;
+			_actuators.control[0] = _impulse_ampl;
 			_actuators.control[1] = MIN_CONTROL;
 			_impulse_index++;
 		}
@@ -250,6 +258,10 @@ void StableDuckling::analyse_command()
 			(double)_kp,
 			(double)_ki,
 			(double)_kd);
+		break;
+	case SET_IMP_PARAMS:
+		_impulse_length = (int)_v_cmd.param1;
+		_impulse_ampl = _v_cmd.param2;
 		break;
 	default:
 		break;
@@ -381,7 +393,6 @@ StableDuckling::start()
 const float StableDuckling::MIN_CONTROL = -1.0f;
 const float StableDuckling::MAX_CONTROL = 1.0f;
 const int StableDuckling::CONTROL_INTERVAL = 10; 	// ms
-const int StableDuckling::IMPULSE_LENGTH = 5;		// control intervals
 
 int stable_duckling_main(int argc, char *argv[])
 {

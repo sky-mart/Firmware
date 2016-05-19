@@ -124,17 +124,11 @@ FactPanel {
                 columns: 4
                 spacing: 3 
 
-                QGCLabel {
-                    text: "P"
-                }
+                QGCLabel { text: "P" }
 
-                QGCLabel {
-                    text: "I"
-                }
+                QGCLabel { text: "I" }
 
-                QGCLabel {
-                    text: "D"
-                }
+                QGCLabel { text: "D" }
 
                 QGCLabel {
                     text: ""
@@ -160,6 +154,47 @@ FactPanel {
                 QGCButton {
                     text: "Send"
                     onClicked: controller.sendCommand(10003, 1, 0, p.text, i.text, d.text, 0, 0, 0, 0)
+                }
+            }
+        }
+
+        GroupBox {
+            title: "impulse"
+
+            Grid {
+                rows: 2
+                columns: 3
+                spacing: 3
+
+                QGCLabel { text: "length"}
+
+                QGCLabel { 
+                    id: ampl_display
+                    text: "amplitude"
+                }
+
+                QGCLabel {
+                    text: ""
+                    width: 1
+                    height: 1
+                }
+
+                QGCTextField {
+                    id: len
+                    text: "20"
+                }
+
+                Slider {
+                    id: ampl_val
+                    minimumValue: -1.0
+                    maximumValue: 1.0
+                    value: 1.0
+                    onValueChanged: ampl_display.text = "Amplitude: " + value
+                }
+
+                QGCButton {
+                    text: "Send"
+                    onClicked: controller.sendCommand(10004, 1, 0, len.text, ampl_val.value, 0, 0, 0, 0, 0)
                 }
             }
         }
