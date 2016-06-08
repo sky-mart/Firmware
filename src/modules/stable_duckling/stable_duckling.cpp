@@ -36,6 +36,7 @@ enum StableDucklingMode
 	MANUAL,
 	PID,
 	IMPULSE,
+	SIN,
 };
 
 enum StableDucklingCommand
@@ -43,7 +44,10 @@ enum StableDucklingCommand
 	SET_MODE = 10001,
 	SET_PWM,
 	SET_PID_COEFFS,
-	SET_IMP_PARAMS
+	SET_IMP_PARAMS,
+	SET_ANCHOR_ROLL,
+	SET_MIN_CONTROL,
+	SET_SIN_PARAMS
 };
 
 class StableDuckling 
@@ -92,6 +96,11 @@ private:
 	float _roll_integral;
 	float _thrust;
 
+	bool _anchor_roll_set;
+	float _anchor_roll;
+	int _anchor_index;
+	int _anchor_length;
+
 	/**
 	 * Assume that _thrust depends on control signal like
 	 * _thrust = _k_thrust * control_signal + _b_thrust 
@@ -103,18 +112,33 @@ private:
 
 	/**
 	 * Impulse mode allows to explore system response
-	 * on impulses of different length and amplitude
+	 * to impulses of different length and amplitude
 	 */
 	int _impulse_index;
 	int _impulse_length; // in CONTROL_INTERVALS
 	float _impulse_ampl; // control signal value
 
+	/**
+	 * Sin mode allows to explore system frequency responses
+	 */
+	double _sin_mag;		// sin magnitude
+	double _sin_freq;	// sin frequency
+	double _sin_phase; 	// sin phase 
+
+	/**
+	 * For faster reacation motors have to be always on
+	 */
+	float _min_control;
+
+	static const int LEFT;
+	static const int RIGHT;
 	static const float MIN_CONTROL;
 	static const float MAX_CONTROL;
 	static const int CONTROL_INTERVAL;
 
 	void apply_thrust();
 	void stop_motors();
+	void anchor();
 	void control();
 	void analyse_command();
 	void safety_off();
@@ -146,13 +170,24 @@ StableDuckling::StableDuckling() :
 	_actuators_0_pub(nullptr),
 	_armed_pub(nullptr),
 	_safety_pub(nullptr),
+	_kp(1.0),
+	_ki(0),
+	_kd(0),
 	_roll_integral(0),
+	_anchor_roll_set(false),
+	_anchor_roll(0),
+	_anchor_index(0),
+	_anchor_length(100),
 	_k_thrust(0.4638f), // experimental values
-	_b_thrust(0.421),
+	_b_thrust(0.421f),
 	_mode(SILENCE),
 	_impulse_index(0),
 	_impulse_length(20),
-	_impulse_ampl(1.0)	
+	_impulse_ampl(1.0f),
+	_sin_mag(0.1),
+	_sin_freq(1.0),
+	_sin_phase(0),
+	_min_control(-1.0f)	
 {
 }
 
@@ -186,6 +221,23 @@ void StableDuckling::stop_motors()
 	_actuators.control[1] = MIN_CONTROL;
 }
 
+void StableDuckling::anchor() 
+{
+	if (!_anchor_roll_set) {
+		if (_anchor_index < _anchor_length) {
+			_anchor_roll += _v_att.roll;
+			_anchor_index++;
+		} else {
+			_anchor_roll /= _anchor_length;
+			_anchor_index = 0;
+			_anchor_roll_set = true;
+			_roll_integral = 0;
+			warnx("new anchor: %.2f", (double)_anchor_roll);
+		}
+	}
+	_v_att.roll -= _anchor_roll;
+}
+
 void StableDuckling::control() 
 {
 	switch (_mode) {
@@ -200,16 +252,26 @@ void StableDuckling::control()
 		break;
 	case IMPULSE:
 		if (_impulse_index == _impulse_length) {
-			_actuators.control[0] = MIN_CONTROL;
-			_actuators.control[1] = MIN_CONTROL;
+			_actuators.control[LEFT] = MIN_CONTROL;
+			_actuators.control[RIGHT] = MIN_CONTROL;
 			_impulse_index = 0;
 			_mode = SILENCE;
 		} else {
-			_actuators.control[0] = _impulse_ampl;
-			_actuators.control[1] = MIN_CONTROL;
+			_actuators.control[LEFT] = _impulse_ampl;
+			_actuators.control[RIGHT] = MIN_CONTROL;
 			_impulse_index++;
 		}
 		break;
+	case SIN: {
+		double dt = CONTROL_INTERVAL / 1000.0;
+		_sin_phase += 2*M_PI*_sin_freq*dt;
+		while (_sin_phase > 2*M_PI) {
+			_sin_phase -= 2*M_PI;
+		}
+		_thrust = _sin_mag * sin(_sin_phase);
+		apply_thrust();
+		break;
+	}	
 	case MANUAL:
 		break;
 	default:
@@ -222,16 +284,20 @@ void StableDuckling::control()
 
 void StableDuckling::apply_thrust() 
 {
+	/* roll increases clockwise if we look from tail 
+	   consequently, when thrust is positive,
+	   we should turn right engine
+	*/
 	if (_thrust > 0) {
-		_actuators.control[0] = (_thrust - _b_thrust) / _k_thrust;
-		if (_actuators.control[0] > MAX_CONTROL) 
-			_actuators.control[0] = MAX_CONTROL;
-		_actuators.control[1] = MIN_CONTROL;
+		_actuators.control[RIGHT] = (_thrust - _b_thrust) / _k_thrust;
+		if (_actuators.control[RIGHT] > MAX_CONTROL) 
+			_actuators.control[RIGHT] = MAX_CONTROL;
+		_actuators.control[LEFT] = _min_control;
 	} else {
-		_actuators.control[1] = (_thrust - _b_thrust) / _k_thrust;
-		if (_actuators.control[1] > MAX_CONTROL) 
-			_actuators.control[1] = MAX_CONTROL;
-		_actuators.control[0] = MIN_CONTROL;
+		_actuators.control[LEFT] = (-_thrust - _b_thrust) / _k_thrust;
+		if (_actuators.control[LEFT] > MAX_CONTROL) 
+			_actuators.control[LEFT] = MAX_CONTROL;
+		_actuators.control[RIGHT] = _min_control;
 	}
 }
 
@@ -242,6 +308,9 @@ void StableDuckling::analyse_command()
 		_mode = (StableDucklingMode)_v_cmd.param1;
 		stop_motors();
 		warnx("mode %d set", _mode);
+		if (_mode == PID) {
+			_roll_integral = 0;
+		}
 		break;
 	case SET_PWM:
 		_actuators.control[0] = _v_cmd.param1;
@@ -263,45 +332,19 @@ void StableDuckling::analyse_command()
 		_impulse_length = (int)_v_cmd.param1;
 		_impulse_ampl = _v_cmd.param2;
 		break;
+	case SET_ANCHOR_ROLL:
+		_anchor_roll_set = false;
+		_anchor_length = (int)_v_cmd.param1;
+		break;
+	case SET_MIN_CONTROL:
+		_min_control = _v_cmd.param1;
+		break;
+	case SET_SIN_PARAMS:
+		_sin_mag = (double)_v_cmd.param1;
+		_sin_freq = (double)_v_cmd.param2;
+		break;
 	default:
 		break;
-	}
-}
-
-void StableDuckling::safety_off()
-{
-	_safety.timestamp = hrt_absolute_time();
-	_safety.safety_switch_available = false;
-	_safety.safety_off = true;
-	_safety_pub = orb_advertise(ORB_ID(safety), &_safety);
-	orb_publish(ORB_ID(safety), _safety_pub, &_safety);
-
-	_safety_sub = orb_subscribe(ORB_ID(safety));
-	orb_copy(ORB_ID(safety), _safety_sub, &_safety);
-
-	if (_safety.safety_off) {
-		warnx("Safety's turned off");
-	} else {
-		errx(1, "Turning safety off failed");
-	}
-}
-
-void StableDuckling::arm_actuators()
-{
-	_armed.timestamp = hrt_absolute_time();
-	_armed.ready_to_arm = true;
-	_armed.armed = true;
-	_armed_pub = orb_advertise(ORB_ID(actuator_armed), &_armed);
-	orb_publish(ORB_ID(actuator_armed), _armed_pub, &_armed);
-
-	/* read back values to validate */
-	_armed_sub = orb_subscribe(ORB_ID(actuator_armed));
-	orb_copy(ORB_ID(actuator_armed), _armed_sub, &_armed);
-
-	if (_armed.ready_to_arm && _armed.armed) {
-		warnx("Actuator armed");
-	} else {
-		errx(1, "Arming actuators failed");
 	}
 }
 
@@ -353,7 +396,7 @@ StableDuckling::task_main()
 
 		if (fds[0].revents & POLLIN) {
 			orb_copy(ORB_ID(vehicle_attitude), _v_att_sub, &_v_att);
-
+			anchor();
 			control();
 		}
 
@@ -390,6 +433,8 @@ StableDuckling::start()
 	return OK;
 }
 
+const int StableDuckling::LEFT = 0;
+const int StableDuckling::RIGHT = 1;
 const float StableDuckling::MIN_CONTROL = -1.0f;
 const float StableDuckling::MAX_CONTROL = 1.0f;
 const int StableDuckling::CONTROL_INTERVAL = 10; 	// ms

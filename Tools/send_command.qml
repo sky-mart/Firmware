@@ -24,15 +24,6 @@ FactPanel {
 
     CustomCommandWidgetController { id: controller; factPanel: panel }
 
-    property var cmd_id
-    property var param1
-    property var param2
-    property var param3
-    property var param4
-    property var param5
-    property var param6
-    property var param7
-
     // Your own custom changes start here - everything else above is always required
 
     Column {
@@ -65,6 +56,12 @@ FactPanel {
                     text: "IMPULSE"
                     exclusiveGroup: modeGroup
                     onClicked: controller.sendCommand(10001, 1, 0, 3, 0, 0, 0, 0, 0, 0, 0)
+                }
+
+                QGCRadioButton {
+                    text: "SIN"
+                    exclusiveGroup: modeGroup
+                    onClicked: controller.sendCommand(10001, 1, 0, 4, 0, 0, 0, 0, 0, 0, 0)
                 }
             }  
         }
@@ -169,7 +166,7 @@ FactPanel {
                 QGCLabel { text: "length"}
 
                 QGCLabel { 
-                    id: ampl_display
+                    id: imp_ampl_display
                     text: "amplitude"
                 }
 
@@ -180,22 +177,75 @@ FactPanel {
                 }
 
                 QGCTextField {
-                    id: len
+                    id: imp_len
                     text: "20"
                 }
 
                 Slider {
-                    id: ampl_val
+                    id: imp_ampl
                     minimumValue: -1.0
                     maximumValue: 1.0
                     value: 1.0
-                    onValueChanged: ampl_display.text = "Amplitude: " + value
+                    onValueChanged: imp_ampl_display.text = "Amplitude: " + value
                 }
 
                 QGCButton {
                     text: "Send"
-                    onClicked: controller.sendCommand(10004, 1, 0, len.text, ampl_val.value, 0, 0, 0, 0, 0)
+                    onClicked: controller.sendCommand(10004, 1, 0, imp_len.text, imp_ampl.value, 0, 0, 0, 0, 0)
                 }
+            }
+        }
+
+        GroupBox {
+            title: "Anchor"
+            Row { 
+                QGCTextField {
+                    id: anchor_len
+                    text: "100"
+                }
+
+                QGCButton {
+                    text: "Send"
+                    onClicked: controller.sendCommand(10005, 1, 0, anchor_len.text, 0, 0, 0, 0, 0, 0)
+                }
+
+            }
+        }
+
+        GroupBox {
+            title: "min control"
+            Row {
+                QGCTextField {
+                    id: min_control
+                    text: "-1.0"
+                }
+
+                QGCButton {
+                    text: "Send"
+                    onClicked: controller.sendCommand(10006, 1, 0, min_control.text, 0, 0, 0, 0, 0, 0)
+                }
+
+            }
+        }
+
+        GroupBox {
+            title: "sin"
+            Row {
+                QGCTextField {
+                    id: sin_mag
+                    text: "0.1"
+                }
+
+                QGCTextField {
+                    id: sin_freq
+                    text: "1.0"
+                }
+
+                QGCButton {
+                    text: "Send"
+                    onClicked: controller.sendCommand(10007, 1, 0, sin_mag.text, sin_freq.text, 0, 0, 0, 0, 0)
+                }
+
             }
         }
     }
