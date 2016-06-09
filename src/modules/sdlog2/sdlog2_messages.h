@@ -589,6 +589,15 @@ struct log_LAND_s {
 	uint8_t landed;
 };
 
+#define LOG_STBL_MSG 58
+struct log_STBL_s {
+	uint64_t timestamp;
+	float anchor_roll;
+	float k_p;
+	float k_i;
+	float k_d;
+};
+
 /********** SYSTEM MESSAGES, ID > 0x80 **********/
 
 /* --- TIME - TIME STAMP --- */
@@ -674,6 +683,7 @@ static const struct log_format_s log_formats[] = {
 	LOG_FORMAT(RPL3, "QffffIB", "Tflow,fx,fy,gx,gy,delT,qual"),
 	LOG_FORMAT(RPL4, "Qf", "Trng,rng"),
 	LOG_FORMAT(LAND, "B", "Landed"),
+	LOG_FORMAT(STBL, "Qffff", "t,anch,Kp,Ki,Kd"),
 	/* system-level messages, ID >= 0x80 */
 	/* FMT: don't write format of format message, it's useless */
 	LOG_FORMAT(TIME, "Q", "StartTime"),

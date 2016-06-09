@@ -3,12 +3,11 @@
 #include <px4_posix.h>
 #include <px4_tasks.h>
 #include <systemlib/err.h>
-#include <uORB/topics/actuator_armed.h>
 #include <uORB/topics/actuator_controls.h>
 #include <uORB/topics/actuator_controls_0.h>
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_command.h>
-#include <uORB/topics/safety.h>
+#include <uORB/topics/stable_duckling.h>
 #include <uORB/uORB.h>
 
 #include <stdio.h>
@@ -79,15 +78,13 @@ private:
 	int 	_safety_sub;			/**< safety subscription */
 
 	orb_advert_t	_actuators_0_pub;	/**< attitude actuator controls publication */
-	orb_advert_t	_armed_pub;		/**< arming status publication */
-	orb_advert_t	_safety_pub;		/**< safety check publication */
+	orb_advert_t	_stable_pub;		/**< my logging data message publication */
 
 	struct vehicle_attitude_s	_v_att;			/**< vehicle attitude */
 	struct actuator_controls_s	_actuators;		/**< actuator controls */
-	struct actuator_armed_s		_armed;			/**< actuator arming status */
 	struct vehicle_command_s	_v_cmd;			/**< vehicle command */
 	struct vehicle_attitude_s 	_v_att_init;		/**< initial vehicle attitude */
-	struct safety_s			_safety;
+	struct stable_duckling_s	_stable;		/**< my logging data message */
 
 	float _kp;
 	float _ki;
@@ -141,8 +138,6 @@ private:
 	void anchor();
 	void control();
 	void analyse_command();
-	void safety_off();
-	void arm_actuators();
 
 	/**
 	 * Shim for calling task_main from task_create.
@@ -168,8 +163,7 @@ StableDuckling::StableDuckling() :
 	_v_cmd_sub(-1),
 	_safety_sub(-1),
 	_actuators_0_pub(nullptr),
-	_armed_pub(nullptr),
-	_safety_pub(nullptr),
+	_stable_pub(nullptr),
 	_kp(1.0),
 	_ki(0),
 	_kd(0),
@@ -232,6 +226,11 @@ void StableDuckling::anchor()
 			_anchor_index = 0;
 			_anchor_roll_set = true;
 			_roll_integral = 0;
+
+			_stable.timestamp = hrt_absolute_time();
+			_stable.anchor_roll = _anchor_roll;
+			orb_publish(ORB_ID(stable_duckling), _stable_pub, &_stable);
+
 			warnx("new anchor: %.2f", (double)_anchor_roll);
 		}
 	}
@@ -323,6 +322,13 @@ void StableDuckling::analyse_command()
 		_kp = _v_cmd.param1;
 		_ki = _v_cmd.param2;
 		_kd = _v_cmd.param3;
+
+		_stable.timestamp = hrt_absolute_time();
+		_stable.k_p = _kp;
+		_stable.k_i = _ki;
+		_stable.k_d = _kd;
+		orb_publish(ORB_ID(stable_duckling), _stable_pub, &_stable);
+
 		warnx("pid coeffs (%.2f %.2f %.2f) set",
 			(double)_kp,
 			(double)_ki,
@@ -365,9 +371,14 @@ StableDuckling::task_main()
 	_v_att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
 	orb_set_interval(_v_att_sub, CONTROL_INTERVAL);
 
-	// safety_off();
-	// arm_actuators();	
 	_actuators_0_pub = orb_advertise(ORB_ID(actuator_controls_0), &_actuators);
+
+	_stable.timestamp = hrt_absolute_time();
+	_stable.anchor_roll = _anchor_roll;
+	_stable.k_p = _kp;
+	_stable.k_i = _ki;
+	_stable.k_d = _kd;
+	_stable_pub = orb_advertise(ORB_ID(stable_duckling), &_stable);
 
 	/* one could wait for multiple topics with this technique, just using one here */
 	px4_pollfd_struct_t fds[2];

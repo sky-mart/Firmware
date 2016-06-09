@@ -116,6 +116,8 @@
 #include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/commander_state.h>
 
+#include <uORB/topics/stable_duckling.h> 
+
 #include <systemlib/systemlib.h>
 #include <systemlib/param/param.h>
 #include <systemlib/perf_counter.h>
@@ -1171,6 +1173,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		struct ekf2_replay_s replay;
 		struct vehicle_land_detected_s land_detected;
 		struct commander_state_s commander_state;
+		struct stable_duckling_s stable_duckling;
 	} buf;
 
 	memset(&buf, 0, sizeof(buf));
@@ -1229,6 +1232,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 			struct log_RPL3_s log_RPL3;
 			struct log_RPL4_s log_RPL4;
 			struct log_LAND_s log_LAND;
+			struct log_STBL_s log_STBL;
 		} body;
 	} log_msg = {
 		LOG_PACKET_HEADER_INIT(0)
@@ -1278,6 +1282,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		int replay_sub;
 		int land_detected_sub;
 		int commander_state_sub;
+		int stable_duckling_sub;
 	} subs;
 
 	subs.cmd_sub = -1;
@@ -1319,7 +1324,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 	subs.replay_sub = -1;
 	subs.land_detected_sub = -1;
 	subs.commander_state_sub = -1;
-
+	subs.stable_duckling_sub = -1;
 	/* add new topics HERE */
 
 
@@ -2158,6 +2163,16 @@ int sdlog2_thread_main(int argc, char *argv[])
 			log_msg.msg_type = LOG_LAND_MSG;
 			log_msg.body.log_LAND.landed = buf.land_detected.landed;
 			LOGBUFFER_WRITE_AND_COUNT(LAND);
+		}
+
+		if (copy_if_updated(ORB_ID(stable_duckling), &subs.stable_duckling_sub, &buf.stable_duckling)) {
+			log_msg.msg_type = LOG_STBL_MSG;
+			log_msg.body.log_STBL.timestamp = buf.stable_duckling.timestamp;
+			log_msg.body.log_STBL.anchor_roll = buf.stable_duckling.anchor_roll;
+			log_msg.body.log_STBL.k_p = buf.stable_duckling.k_p;
+			log_msg.body.log_STBL.k_i = buf.stable_duckling.k_i;
+			log_msg.body.log_STBL.k_d = buf.stable_duckling.k_d;
+			LOGBUFFER_WRITE_AND_COUNT(STBL);
 		}
 
 		pthread_mutex_lock(&logbuffer_mutex);
