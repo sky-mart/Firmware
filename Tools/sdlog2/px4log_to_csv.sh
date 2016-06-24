@@ -15,6 +15,6 @@ for session in $session_list; do
 		csvlog_full_path=$session_full_path/${px4log%.px4log}.csv
 		echo $csvlog_full_path
 
-		python $python_dumper $px4log_full_path -m TIME -m OUT0 -m ATT > $csvlog_full_path
+		python $python_dumper $px4log_full_path -m TIME -m OUT0 -m ATT -m STBL > $csvlog_full_path
 	done
 done
