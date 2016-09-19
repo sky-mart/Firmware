@@ -1,5 +1,10 @@
-uint64 timestamp	
 float32 anchor_roll
 float32 k_p
 float32 k_i
 float32 k_d
+float32 roll
+float32 rollspeed
+float32 rollacc
+float32 rollacc_des
+float32 tau
+float32 step

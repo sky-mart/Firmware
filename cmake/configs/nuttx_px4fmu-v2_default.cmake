@@ -48,6 +48,7 @@ set(config_module_list
 	drivers/bst
 	drivers/snapdragon_rc_pwm
 	drivers/lis3mdl
+	drivers/ws2812
 
 	#
 	# System commands
@@ -97,6 +98,7 @@ set(config_module_list
 	modules/vtol_att_control
 
 	modules/stable_duckling
+	# modules/trainer
 
 	#
 	# Logging

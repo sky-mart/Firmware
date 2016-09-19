@@ -191,7 +191,6 @@ SPI::_transfer(uint8_t *send, uint8_t *recv, unsigned len)
 
 	/* and clean up */
 	SPI_SELECT(_dev, _device, false);
-
 	return OK;
 }
 

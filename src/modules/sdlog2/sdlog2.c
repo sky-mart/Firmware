@@ -2167,11 +2167,16 @@ int sdlog2_thread_main(int argc, char *argv[])
 
 		if (copy_if_updated(ORB_ID(stable_duckling), &subs.stable_duckling_sub, &buf.stable_duckling)) {
 			log_msg.msg_type = LOG_STBL_MSG;
-			log_msg.body.log_STBL.timestamp = buf.stable_duckling.timestamp;
 			log_msg.body.log_STBL.anchor_roll = buf.stable_duckling.anchor_roll;
 			log_msg.body.log_STBL.k_p = buf.stable_duckling.k_p;
 			log_msg.body.log_STBL.k_i = buf.stable_duckling.k_i;
 			log_msg.body.log_STBL.k_d = buf.stable_duckling.k_d;
+			log_msg.body.log_STBL.roll = buf.stable_duckling.roll;
+			log_msg.body.log_STBL.rollspeed = buf.stable_duckling.rollspeed;
+			log_msg.body.log_STBL.rollacc = buf.stable_duckling.rollacc;
+			log_msg.body.log_STBL.rollacc_des = buf.stable_duckling.rollacc_des;
+			log_msg.body.log_STBL.tau = buf.stable_duckling.tau;
+			log_msg.body.log_STBL.step = buf.stable_duckling.step;
 			LOGBUFFER_WRITE_AND_COUNT(STBL);
 		}
 

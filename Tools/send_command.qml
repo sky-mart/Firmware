@@ -63,6 +63,12 @@ FactPanel {
                     exclusiveGroup: modeGroup
                     onClicked: controller.sendCommand(10001, 1, 0, 4, 0, 0, 0, 0, 0, 0, 0)
                 }
+
+                QGCRadioButton {
+                    text: "TWO"
+                    exclusiveGroup: modeGroup
+                    onClicked: controller.sendCommand(10001, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0)
+                }
             }  
         }
 
@@ -244,6 +250,27 @@ FactPanel {
                 QGCButton {
                     text: "Send"
                     onClicked: controller.sendCommand(10007, 1, 0, sin_mag.text, sin_freq.text, 0, 0, 0, 0, 0)
+                }
+
+            }
+        }
+
+        GroupBox {
+            title: "two"
+            Row {
+                QGCTextField {
+                    id: tau
+                    text: "0.1"
+                }
+
+                QGCTextField {
+                    id: max_step
+                    text: "0.1"
+                }
+
+                QGCButton {
+                    text: "Send"
+                    onClicked: controller.sendCommand(10008, 1, 0, tau.text, max_step.text, 0, 0, 0, 0, 0)
                 }
 
             }

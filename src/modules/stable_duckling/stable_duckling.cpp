@@ -22,6 +22,11 @@
 #include <systemlib/systemlib.h>
 #include <systemlib/err.h>
 
+#include <math.h>
+
+#include <drivers/ws2812/ws2812.h>
+
+#define DT CONTROL_INTERVAL
 /**
  * Stable Duckling app start / stop handling function
  *
@@ -36,6 +41,7 @@ enum StableDucklingMode
 	PID,
 	IMPULSE,
 	SIN,
+	TWO_STAGE
 };
 
 enum StableDucklingCommand
@@ -46,7 +52,8 @@ enum StableDucklingCommand
 	SET_IMP_PARAMS,
 	SET_ANCHOR_ROLL,
 	SET_MIN_CONTROL,
-	SET_SIN_PARAMS
+	SET_SIN_PARAMS,
+	SET_TWO_PARAMS
 };
 
 class StableDuckling 
@@ -90,6 +97,7 @@ private:
 	float _ki;
 	float _kd;
 
+	float _rollspeed_prev;
 	float _roll_integral;
 	float _thrust;
 
@@ -118,26 +126,37 @@ private:
 	/**
 	 * Sin mode allows to explore system frequency responses
 	 */
-	double _sin_mag;		// sin magnitude
+	double _sin_mag;	// sin magnitude
 	double _sin_freq;	// sin frequency
 	double _sin_phase; 	// sin phase 
 
 	/**
-	 * For faster reacation motors have to be always on
+	 * Two stage mode
+	 */
+	float _tau;			// typical system time
+	float _two_stage_step;
+
+	/**
+	 * For faster reaction motors have to be always on
 	 */
 	float _min_control;
+
+	uint8_t _cur_led_color;
 
 	static const int LEFT;
 	static const int RIGHT;
 	static const float MIN_CONTROL;
 	static const float MAX_CONTROL;
 	static const int CONTROL_INTERVAL;
+	static const char LED_COLOR[2][3]; // 2 colors, green-red-blue
 
+	void two_stage();
 	void apply_thrust();
 	void stop_motors();
 	void anchor();
 	void control();
 	void analyse_command();
+	void toggle_led();
 
 	/**
 	 * Shim for calling task_main from task_create.
@@ -167,6 +186,7 @@ StableDuckling::StableDuckling() :
 	_kp(1.0),
 	_ki(0),
 	_kd(0),
+	_rollspeed_prev(0),
 	_roll_integral(0),
 	_anchor_roll_set(false),
 	_anchor_roll(0),
@@ -181,7 +201,10 @@ StableDuckling::StableDuckling() :
 	_sin_mag(0.1),
 	_sin_freq(1.0),
 	_sin_phase(0),
-	_min_control(-1.0f)	
+	_tau(1.0f),
+	_two_stage_step(2.0f),
+	_min_control(-1.0f),
+	_cur_led_color(0)	
 {
 }
 
@@ -227,7 +250,6 @@ void StableDuckling::anchor()
 			_anchor_roll_set = true;
 			_roll_integral = 0;
 
-			_stable.timestamp = hrt_absolute_time();
 			_stable.anchor_roll = _anchor_roll;
 			orb_publish(ORB_ID(stable_duckling), _stable_pub, &_stable);
 
@@ -237,9 +259,110 @@ void StableDuckling::anchor()
 	_v_att.roll -= _anchor_roll;
 }
 
+void StableDuckling::two_stage() 
+{
+#define TWO_STAGE_DEBUG_NUM 100
+	static int two_stage_debug_counter = 0;
+
+	if (two_stage_debug_counter < TWO_STAGE_DEBUG_NUM) {
+		warnx("step #%d", two_stage_debug_counter + 1);
+		warnx("a: %.2f, w: %.2f, e: %.8f", 
+			(double)_v_att.roll,
+			(double)_v_att.rollspeed,
+			(double)_v_att.rollacc
+			);
+	}
+
+	// first stage: define desired roll acceleration
+	float rollacc_des = 0;
+	if (_v_att.roll * _v_att.rollspeed > 0) {
+		rollacc_des = - (4*_v_att.roll + 3*_v_att.rollspeed) / 
+					_tau / _tau;
+	} else if (-4*_v_att.roll/_v_att.rollspeed/_tau > 1) {
+		rollacc_des = - (4*_v_att.roll + 3*_v_att.rollspeed) / 
+					_tau / _tau;
+	} else {
+		float t1 = - 2 * _v_att.roll / _v_att.rollspeed;
+		rollacc_des = - _v_att.rollspeed / t1;
+	}
+
+	// if (two_stage_debug_counter < TWO_STAGE_DEBUG_NUM) {
+	// 	warnx("e_des: %.2f", (double)rollacc_des);
+	// 	warnx("actuators: %.2f, %.2f", 
+	// 		(double)_actuators.control[LEFT], 
+	// 		(double)_actuators.control[RIGHT]
+	// 		);
+	// }
+
+	// second stage: pick up pwm duty cycle
+	float pcur = 0, pdes = 0;
+	if (rollacc_des < 0) {
+		pcur = 100 * (_actuators.control[RIGHT] - _min_control) / (MAX_CONTROL - _min_control);
+
+		if (rollacc_des < _stable.rollacc) {
+			pdes = pcur + _two_stage_step;
+		} else {
+			pdes = pcur - _two_stage_step;
+		}
+
+		if (pdes < 0) pdes = 0;
+		if (pdes > 100) pdes = 100;
+
+		if (two_stage_debug_counter < TWO_STAGE_DEBUG_NUM) {
+			warnx("pcur: %.2f, pdes: %.2f", 
+				(double)pcur,
+				(double)pdes
+				);
+		}
+
+
+		// set pwm
+		_actuators.control[RIGHT] = (MAX_CONTROL - _min_control) * pdes / 100 + _min_control;
+		_actuators.control[LEFT] = _min_control;
+	} else {
+		pcur = 100 * (_actuators.control[LEFT] - _min_control) / (MAX_CONTROL - _min_control);
+
+		if (rollacc_des > _stable.rollacc) {
+			pdes = pcur + _two_stage_step;
+		} else {
+			pdes = pcur - _two_stage_step;
+		}
+
+		if (pdes < 0) pdes = 0;
+		if (pdes > 100) pdes = 100;
+
+		if (two_stage_debug_counter < TWO_STAGE_DEBUG_NUM) {
+			warnx("pcur: %.2f, pdes: %.2f", 
+				(double)pcur,
+				(double)pdes
+				);
+		}
+
+
+		_actuators.control[LEFT] = (MAX_CONTROL - _min_control) * pdes / 100 + _min_control;
+		_actuators.control[RIGHT] = _min_control;
+	}
+
+	_stable.roll 		= _v_att.roll;
+	_stable.rollspeed 	= _v_att.rollspeed;
+	_stable.rollacc_des 	= rollacc_des;
+	orb_publish(ORB_ID(stable_duckling), _stable_pub, &_stable);
+
+	if (two_stage_debug_counter < TWO_STAGE_DEBUG_NUM) {
+		warnx("actuators: %.2f, %.2f\n", 
+			(double)_actuators.control[LEFT], 
+			(double)_actuators.control[RIGHT]
+			);
+	}
+	two_stage_debug_counter++;
+}
+
 void StableDuckling::control() 
 {
 	switch (_mode) {
+	case TWO_STAGE:
+		two_stage();
+		break;
 	case PID:
 		_roll_integral += _v_att.roll;
 
@@ -323,7 +446,6 @@ void StableDuckling::analyse_command()
 		_ki = _v_cmd.param2;
 		_kd = _v_cmd.param3;
 
-		_stable.timestamp = hrt_absolute_time();
 		_stable.k_p = _kp;
 		_stable.k_i = _ki;
 		_stable.k_d = _kd;
@@ -349,9 +471,28 @@ void StableDuckling::analyse_command()
 		_sin_mag = (double)_v_cmd.param1;
 		_sin_freq = (double)_v_cmd.param2;
 		break;
+	case SET_TWO_PARAMS:
+		_tau = _v_cmd.param1;
+		_two_stage_step = _v_cmd.param2;
+
+		_stable.tau = _tau;
+		_stable.step = _two_stage_step;
+		orb_publish(ORB_ID(stable_duckling), _stable_pub, &_stable);
+
+		warnx("tau: %.2f, max_step: %.2f", (double)_tau, (double)_two_stage_step);
+		break;
 	default:
 		break;
 	}
+	toggle_led();
+}
+
+void StableDuckling::toggle_led()
+{
+	int fd = open(ws2812_path, O_WRONLY);
+	write(fd, LED_COLOR[_cur_led_color], 3);
+	close(fd);
+	_cur_led_color ^= 0x01;
 }
 
 void
@@ -364,6 +505,8 @@ StableDuckling::task_main_trampoline(int argc, char *argv[])
 void
 StableDuckling::task_main()
 {
+	toggle_led();
+
 	_v_cmd_sub = orb_subscribe(ORB_ID(vehicle_command));
 	orb_set_interval(_v_cmd_sub, CONTROL_INTERVAL);
 
@@ -373,11 +516,16 @@ StableDuckling::task_main()
 
 	_actuators_0_pub = orb_advertise(ORB_ID(actuator_controls_0), &_actuators);
 
-	_stable.timestamp = hrt_absolute_time();
 	_stable.anchor_roll = _anchor_roll;
 	_stable.k_p = _kp;
 	_stable.k_i = _ki;
 	_stable.k_d = _kd;
+	_stable.roll = 0;
+	_stable.rollspeed = 0;
+	_stable.rollacc = 0;
+	_stable.rollacc_des = 0;
+	_stable.tau = _tau;
+	_stable.step = _two_stage_step;
 	_stable_pub = orb_advertise(ORB_ID(stable_duckling), &_stable);
 
 	/* one could wait for multiple topics with this technique, just using one here */
@@ -407,8 +555,13 @@ StableDuckling::task_main()
 
 		if (fds[0].revents & POLLIN) {
 			orb_copy(ORB_ID(vehicle_attitude), _v_att_sub, &_v_att);
+
+			_stable.rollacc = (_v_att.rollspeed - _rollspeed_prev) / DT;
+
 			anchor();
 			control();
+
+			_rollspeed_prev = _v_att.rollspeed;
 		}
 
 		if (fds[1].revents & POLLIN) {
@@ -449,6 +602,11 @@ const int StableDuckling::RIGHT = 1;
 const float StableDuckling::MIN_CONTROL = -1.0f;
 const float StableDuckling::MAX_CONTROL = 1.0f;
 const int StableDuckling::CONTROL_INTERVAL = 10; 	// ms
+
+const char StableDuckling::LED_COLOR[2][3] = {
+	{0xff, 0x00, 0x00}, // green
+	{0xff, 0xff, 0xff}  // white
+};
 
 int stable_duckling_main(int argc, char *argv[])
 {
