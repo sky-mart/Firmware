@@ -143,6 +143,7 @@ private:
 
 	uint8_t _cur_led_color;
 
+	static const int BACK; // back motor
 	static const int LEFT;
 	static const int RIGHT;
 	static const float MIN_CONTROL;
@@ -234,8 +235,9 @@ StableDuckling::~StableDuckling()
 
 void StableDuckling::stop_motors()
 {
-	_actuators.control[0] = MIN_CONTROL;
-	_actuators.control[1] = MIN_CONTROL;
+	_actuators.control[LEFT] = MIN_CONTROL;
+	_actuators.control[RIGHT] = MIN_CONTROL;
+	_actuators.control[BACK] = MIN_CONTROL;
 }
 
 void StableDuckling::anchor() 
@@ -406,7 +408,7 @@ void StableDuckling::control()
 
 void StableDuckling::apply_thrust() 
 {
-	/* roll increases clockwise if we look from tail 
+	/* roll increases clockwise if we look from tail, 
 	   consequently, when thrust is positive,
 	   we should turn right engine
 	*/
@@ -434,13 +436,17 @@ void StableDuckling::analyse_command()
 			_roll_integral = 0;
 		}
 		break;
-	case SET_PWM:
-		_actuators.control[0] = _v_cmd.param1;
-		_actuators.control[1] = _v_cmd.param2;
-		warnx("pwm (%.2f %.2f) set", 
-			(double)_actuators.control[0], 
-			(double)_actuators.control[1]);
+	case SET_PWM: {
+		int motor = (int)_v_cmd.param1;
+		_actuators.control[motor] = _v_cmd.param2;
 		break;
+	}
+		// _actuators.control[0] = _v_cmd.param1;
+		// _actuators.control[1] = _v_cmd.param2;
+		// warnx("pwm (%.2f %.2f) set", 
+		// 	(double)_actuators.control[0], 
+		// 	(double)_actuators.control[1]);
+		
 	case SET_PID_COEFFS:
 		_kp = _v_cmd.param1;
 		_ki = _v_cmd.param2;
@@ -597,6 +603,7 @@ StableDuckling::start()
 	return OK;
 }
 
+const int StableDuckling::BACK = 2;
 const int StableDuckling::LEFT = 0;
 const int StableDuckling::RIGHT = 1;
 const float StableDuckling::MIN_CONTROL = -1.0f;

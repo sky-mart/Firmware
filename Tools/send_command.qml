@@ -18,6 +18,11 @@ import QGroundControl.Controllers 1.0
 import "."
 
 FactPanel {
+    function pad(width, string, padding)
+    {
+        return (width <= string.length) ? string : pad(width, string + padding, padding)
+    }
+    
     id: panel
     
     property var qgcView: null // Temporary hack for broken QGC parameter validation implementation
@@ -76,7 +81,7 @@ FactPanel {
             title: "PWM"
 
             Grid {
-                rows:2
+                rows: 3
                 columns: 3
                 spacing: 3
 
@@ -85,23 +90,22 @@ FactPanel {
                     text: "Left"
                 }
 
-                QGCLabel {
-                    id: right
-                    text: "Right"
-                }
-
-                QGCLabel {
-                    text: ""
-                    width: 1
-                    height: 1
-                }
-
                 Slider {
                     id: pwm1
                     minimumValue: -1.0
                     maximumValue: 1.0
                     value: -1.0
-                    onValueChanged: left.text = "Left: " + value
+                    onValueChanged: left.text = pad(12, "Left: " + value.toFixed(2), ' ');
+                }
+
+                QGCButton {
+                    text: "Send"
+                    onClicked: controller.sendCommand(10002, 1, 0, 0, pwm1.value, 0, 0, 0, 0, 0, 0)
+                }
+
+                QGCLabel {
+                    id: right
+                    text: "Right"
                 }
 
                 Slider {
@@ -109,12 +113,33 @@ FactPanel {
                     minimumValue: -1.0
                     maximumValue: 1.0
                     value: -1.0
-                    onValueChanged: right.text = "Right: " + value
+                    onValueChanged: right.text = pad(12, "Right: " + value.toFixed(2), ' ')
                 }
 
                 QGCButton {
                     text: "Send"
-                    onClicked: controller.sendCommand(10002, 1, 0, pwm1.value, pwm2.value, 0, 0, 0, 0, 0, 0)
+                    onClicked: controller.sendCommand(10002, 1, 0, 1, pwm2.value, 0, 0, 0, 0, 0, 0)
+                }
+
+                QGCLabel {
+                    id: back
+                    text: "Back"
+                }
+
+                Slider {
+                    id: pwm3
+                    minimumValue: -1.0
+                    maximumValue: 1.0
+                    value: -1.0
+                    onValueChanged: back.text = pad(12, "Back: " + value.toFixed(2), ' ')
+                }
+
+                QGCButton {
+                    text: "Send"
+                    onClicked: {
+                        controller.sendCommand(10002, 1, 0, 0, pwm1.value, 0, 0, 0, 0, 0, 0);
+                        controller.sendCommand(10002, 1, 0, 1, pwm2.value, 0, 0, 0, 0, 0, 0);
+                    }
                 }
             }
         }
